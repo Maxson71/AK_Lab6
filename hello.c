@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: Dual BSD/GPL
 
 /*
  * Copyright (c) 2017, GlobalLogic Ukraine LLC
@@ -30,50 +30,53 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <linux/init.h>
 #include <linux/module.h>
-#include <linux/printk.h>
+#include <linux/init.h>
+#include <linux/list.h>
 #include <linux/ktime.h>
 #include <linux/slab.h>
-#include <linux/list.h>
+#include <linux/printk.h>
+#include <linux/types.h>
+#include <asm-generic/bug.h>
+#include "hello.h"
 
-MODULE_AUTHOR("Sherstiuk Maksym <Sherstukmax2005@gmail.com>");
-MODULE_DESCRIPTION("Hello, world in Linux Kernel Training");
+MODULE_AUTHOR("Sherstiuk Maksym <sherstukmax2005@gmail.com>");
+MODULE_DESCRIPTION("Hello, world in Linux Kernel Training with Dynamic Debug");
 MODULE_LICENSE("Dual BSD/GPL");
 
-static uint param = 1;
-module_param(param, uint, 0644);
-MODULE_PARM_DESC(param, "An unsigned integer, specifies how many times to write \"Hello, world!\"");
+#define BUG_ON_MSG(condition, msg) \
+	do { \
+		if (unlikely(condition)) { \
+			pr_warn(msg); \
+			BUG(); \
+		} \
+	} while (0)
 
-struct my_data {
+static unsigned int param = 1;
+static unsigned int allocations;
+
+struct event {
 	struct list_head list;
-	ktime_t ktime;
+	ktime_t event_time;
 };
 
-static LIST_HEAD(my_list);
+module_param(param, uint, 0644);
+MODULE_PARM_DESC(param, "An unsigned integer, specifies how many times to write \"Hello, world!\"");
+static struct list_head event_list_head;
+static LIST_HEAD(event_list_head);
 
 static int __init hello_init(void)
 {
-	uint i;
+	int i = 0;
 
-	if (param == 0 || (param > 5 && param <= 10)) {
-		pr_warn("Warning: param is 0 or between 5 and 10!\n");
-	} else if (param > 10) {
-		pr_err("Error: param is greater than 10! Module not loaded.\n");
-		return -EINVAL;
-	}
+	if (param == 0 || (param >= 5 && param <= 10))
+		pr_warn(" param is 0 [5,10]");
+
+	BUG_ON(param > 10);
 
 	for (i = 0; i < param; i++) {
-		struct my_data *new = kmalloc(sizeof(*new), GFP_KERNEL);
-
-		if (!new)
-			return -ENOMEM;
-
-		new->ktime = ktime_get();
-
-		list_add_tail(&new->list, &my_list);
-
-		pr_info("Hello, world!\n");
+		pr_emerg("Hello, World!\n");
+		new_event();
 	}
 
 	return 0;
@@ -81,13 +84,24 @@ static int __init hello_init(void)
 
 static void __exit hello_exit(void)
 {
-	struct my_data *node, *tmp;
+	struct event *md, *tmp;
 
-	list_for_each_entry_safe(node, tmp, &my_list, list) {
-		pr_info("Time: %lld ns\n", ktime_to_ns(node->ktime));
-		list_del(&node->list);
-		kfree(node);
+	list_for_each_entry_safe(md, tmp, &event_list_head, list) {
+		pr_emerg("Time: %lld\n", md->event_time);
+		list_del(&md->list);
+		kfree(md);
 	}
+}
+
+void new_event(void)
+{
+	struct event *element;
+
+	element = kmalloc(sizeof(struct event), GFP_KERNEL);
+	allocations++;
+	BUG_ON_MSG(allocations == 5, "kmallo returned NULL");
+	element->event_time = ktime_get();
+	list_add_tail(&element->list, &event_list_head);
 }
 
 module_init(hello_init);
