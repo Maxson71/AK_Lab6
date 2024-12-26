@@ -4,7 +4,7 @@ obj-m   := hello.o
 ccflags-y += -g
 else
 
-KDIR ?= /home/viktor/repos/linux-stable
+KDIR ?= /home/maxson/repos/linux-stable
 
 default:
 	$(MAKE) -C $(KDIR) M=$$PWD
